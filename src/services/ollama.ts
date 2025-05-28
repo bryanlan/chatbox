@@ -18,53 +18,34 @@ export async function supportsVision(host: string, model: string): Promise<boole
     const json = await res.json()
     console.log(`[Ollama Vision Check] API response for ${model}:`, json)
     
-    if (!json?.details) {
-      console.log(`[Ollama Vision Check] No details found for ${model}`)
+    if (!json) {
+      console.log(`[Ollama Vision Check] No response for ${model}`)
       visionCache.set(key, false)
       return false
     }
     
-    const d = json.details
-    
-    /* 1. Preferred: capabilities[] includes 'vision' */
-    if (Array.isArray(d.capabilities) && d.capabilities.includes('vision')) {
-      console.log(`[Ollama Vision Check] ${model} supports vision via capabilities array: ${d.capabilities}`)
+    // v0.6.4+ — authoritative check for capabilities at top level
+    if (Array.isArray(json.capabilities) && json.capabilities.includes('vision')) {
+      console.log(`[Ollama Vision Check] ${model} supports vision via top-level capabilities: ${json.capabilities}`)
       visionCache.set(key, true)
       return true
     }
     
-    /* 2. Check if families string contains vision-related keywords */
-    if (typeof d.families === 'string') {
-      const families = d.families.toLowerCase()
-      if (families.includes('vl') || families.includes('vision') || families.includes('qwen25vl') || families.includes('llava')) {
-        console.log(`[Ollama Vision Check] ${model} supports vision via families string: ${d.families}`)
-        visionCache.set(key, true)
-        return true
-      }
-    }
-    
-    /* 3. Fallback for 0.6.0 – 0.6.3 where some models had clip in families array */
-    if (Array.isArray(d.families) && d.families.includes('clip')) {
-      console.log(`[Ollama Vision Check] ${model} supports vision via families array (legacy): ${d.families}`)
-      visionCache.set(key, true)
-      return true
-    }
-    
+    // fallback for v0.6.0 – 0.6.3 (older LLaVA-style models)
+    const d = json.details ?? {}
     if (d.projector?.architecture === 'clip') {
-      console.log(`[Ollama Vision Check] ${model} supports vision via projector architecture: ${d.projector?.architecture}`)
+      console.log(`[Ollama Vision Check] ${model} supports vision via projector architecture (legacy): ${d.projector?.architecture}`)
       visionCache.set(key, true)
       return true
     }
     
-    /* 4. Check model name patterns for known vision models */
-    const modelLower = model.toLowerCase()
-    if (modelLower.includes('vl') || modelLower.includes('vision') || modelLower.includes('llava') || modelLower.includes('qwen2.5vl')) {
-      console.log(`[Ollama Vision Check] ${model} supports vision via model name pattern`)
+    if ((d.families ?? []).includes('clip')) {
+      console.log(`[Ollama Vision Check] ${model} supports vision via families clip (legacy): ${d.families}`)
       visionCache.set(key, true)
       return true
     }
     
-    console.log(`[Ollama Vision Check] ${model} does not support vision. Capabilities: ${d.capabilities}, Families: ${d.families}, Projector: ${d.projector?.architecture}`)
+    console.log(`[Ollama Vision Check] ${model} does not support vision. Capabilities: ${json.capabilities}, Projector: ${d.projector?.architecture}, Families: ${d.families}`)
     visionCache.set(key, false)
     return false
   } catch (error) {

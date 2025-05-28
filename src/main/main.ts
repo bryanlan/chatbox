@@ -15,7 +15,6 @@ import os from 'os'
 import path from 'path'
 import { ShortcutSetting } from 'src/shared/types'
 import * as analystic from './analystic-node'
-import { AppUpdater } from './app-updater'
 import * as autoLauncher from './autoLauncher'
 import { parseFile } from './file-parser'
 import Locale from './locales'
@@ -32,10 +31,6 @@ import {
 } from './store-node'
 import { resolveHtmlPath } from './util'
 import * as windowState from './window_state'
-import * as analystic from './analystic-node'
-import * as autoLauncher from './autoLauncher'
-import { ShortcutSetting } from 'src/shared/types'
-import { parseFile } from './file-parser'
 // import { readability } from './readability'
 
 // 这行代码是解决 Windows 通知的标题和图标不正确的问题，标题会错误显示成 electron.app.Chatbox
@@ -115,7 +110,8 @@ function isValidShortcut(shortcut: string): boolean {
 
 function registerShortcuts(shortcutSetting?: ShortcutSetting) {
   if (!shortcutSetting) {
-    shortcutSetting = getSettings().shortcuts
+    const settings = getSettings()
+    shortcutSetting = settings?.shortcuts
   }
   if (!shortcutSetting) {
     return
@@ -149,11 +145,16 @@ function createTray() {
     iconPath = getAssetPath('icon.ico')
   }
   tray = new Tray(iconPath)
+  
+  // Get settings with safety check for shortcuts
+  const settings = getSettings()
+  const quickToggleShortcut = settings?.shortcuts?.quickToggle || 'Alt+`'
+  
   const contextMenu = Menu.buildFromTemplate([
     {
       label: locale.t('Show/Hide'),
       click: showOrHideWindow,
-      accelerator: getSettings().shortcuts.quickToggle,
+      accelerator: quickToggleShortcut,
     },
     {
       label: locale.t('Exit'),

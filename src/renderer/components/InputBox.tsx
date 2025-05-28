@@ -34,12 +34,14 @@ import { Box, Text, Tooltip } from '@mantine/core'
 import { clsx } from 'clsx'
 import { supportsVision } from '../../services/ollama'
 import * as toastActions from '@/stores/toastActions'
+import { getModelSettingUtil } from '@/packages/model-setting-utils'
 
 export default function InputBox() {
   const theme = useTheme()
   const [quote, setQuote] = useAtom(atoms.quoteAtom)
   const currentSessionId = useAtomValue(atoms.currentSessionIdAtom)
   const currentSessionType = useAtomValue(atoms.currentSessionTypeAtom)
+  const currentSession = useAtomValue(atoms.currentSessionAtom)
   const isSmallScreen = useIsSmallScreen()
   const { t } = useTranslation()
   const [messageInput, setMessageInput] = useState('')
@@ -58,6 +60,8 @@ export default function InputBox() {
   const shortcuts = useAtomValue(atoms.shortcutsAtom)
 
   const { min: minTextareaHeight, max: maxTextareaHeight } = useInputBoxHeight()
+
+  const { providers } = useProviders()
 
   useEffect(() => {
     if (quote !== '') {
@@ -80,18 +84,21 @@ export default function InputBox() {
   useEffect(() => {
     const check = async () => {
       if (currentSession?.settings?.provider === ModelProvider.Ollama && currentSession.settings?.modelId) {
+        console.log(`[InputBox] Checking Ollama vision for model: ${currentSession.settings.modelId}`)
         const info = providers.find((p) => p.id === ModelProvider.Ollama)
         const host = info?.apiHost || ''
+        console.log(`[InputBox] Ollama host: ${host}`)
         const ok = await supportsVision(host, currentSession.settings.modelId!)
+        console.log(`[InputBox] Vision check result for ${currentSession.settings.modelId}: ${ok}`)
         setOllamaVision(ok)
       } else {
+        console.log(`[InputBox] Not Ollama provider or no model ID, setting ollamaVision to true`)
         setOllamaVision(true)
       }
     }
     check()
   }, [currentSession?.settings?.provider, currentSession?.settings?.modelId, providers])
 
-  const currentSession = useAtomValue(atoms.currentSessionAtom)
   const lastMessage = currentSession?.messages.length
     ? currentSession.messages[currentSession.messages.length - 1]
     : null
@@ -128,7 +135,7 @@ export default function InputBox() {
 
     if (pictureKeys.length > 0 && currentSession.settings.provider === ModelProvider.Ollama && !ollamaVision) {
       toastActions.add(
-        `${currentSession.settings.modelId} doesn’t have vision abilities. Pick a model that lists clip in its families (e.g. llava:13b, llama3.2-vision) or remove the image.`,
+        `${currentSession.settings.modelId} doesn't have vision abilities. Pick a model that lists clip in its families (e.g. llava:13b, llama3.2-vision) or remove the image.`,
       )
       return
     }
@@ -286,20 +293,24 @@ export default function InputBox() {
   }
 
   const insertFiles = async (files: File[]) => {
-    if (currentSession?.settings?.provider === ModelProvider.Ollama && currentSession.settings?.modelId) {
-      const info = providers.find((p) => p.id === ModelProvider.Ollama)
-      const host = info?.apiHost || ''
-      const ok = await supportsVision(host, currentSession.settings.modelId)
-      if (!ok) {
-        toastActions.add(
-          `${currentSession.settings.modelId} doesn’t have vision abilities. Pick a model that lists clip in its families (e.g. llava:13b, llama3.2-vision) or remove the image.`,
-        )
-        return
-      }
+    // Check if any of the files are images and if the current model supports vision
+    const hasImages = files.some(file => file.type.startsWith('image/'))
+    console.log(`[insertFiles] Processing ${files.length} files, hasImages: ${hasImages}`)
+    console.log(`[insertFiles] Current provider: ${currentSession?.settings?.provider}, modelId: ${currentSession?.settings?.modelId}`)
+    console.log(`[insertFiles] ollamaVision state: ${ollamaVision}`)
+    
+    if (hasImages && currentSession?.settings?.provider === ModelProvider.Ollama && !ollamaVision) {
+      console.log(`[insertFiles] Blocking image insertion - Ollama model doesn't support vision`)
+      toastActions.add(
+        `${currentSession.settings.modelId} doesn't have vision abilities. Pick a model that lists clip in its families (e.g. llava:13b, llama3.2-vision) or remove the image.`,
+      )
+      return
     }
+    
     for (const file of files) {
       // 文件和图片插入方法复用，会导致 svg、gif 这类不支持的图片也被插入，但暂时没看到有什么问题
       if (file.type.startsWith('image/')) {
+        console.log(`[insertFiles] Processing image file: ${file.name}`)
         const base64 = await picUtils.getImageBase64AndResize(file)
         const key = StorageKeyGenerator.picture('input-box')
         await storage.setBlob(key, base64)
@@ -391,7 +402,6 @@ export default function InputBox() {
     noKeyboard: true,
   })
 
-  const { providers } = useProviders()
   const modelSelectorDisplayText = useMemo(() => {
     if (!currentSession?.settings?.provider || !currentSession.settings.modelId) {
       return t('Select Model')
@@ -406,7 +416,7 @@ export default function InputBox() {
     })`
   }, [providers, currentSession])
   const [showSelectModelErrorTip, setShowSelectModelErrorTip] = useState(false)
-  const handleSelectModel = (provider: ModelProvider, modelId: string) => {
+  const handleSelectModel = (provider: ModelProvider | string, modelId: string) => {
     if (!currentSession) {
       return
     }
@@ -414,7 +424,7 @@ export default function InputBox() {
       id: currentSession.id,
       settings: {
         ...(currentSession.settings || {}),
-        provider,
+        provider: provider as ModelProvider,
         modelId,
       },
     })

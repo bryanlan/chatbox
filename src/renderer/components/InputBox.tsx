@@ -84,15 +84,11 @@ export default function InputBox() {
   useEffect(() => {
     const check = async () => {
       if (currentSession?.settings?.provider === ModelProvider.Ollama && currentSession.settings?.modelId) {
-        console.log(`[InputBox] Checking Ollama vision for model: ${currentSession.settings.modelId}`)
         const info = providers.find((p) => p.id === ModelProvider.Ollama)
         const host = info?.apiHost || ''
-        console.log(`[InputBox] Ollama host: ${host}`)
         const ok = await supportsVision(host, currentSession.settings.modelId!)
-        console.log(`[InputBox] Vision check result for ${currentSession.settings.modelId}: ${ok}`)
         setOllamaVision(ok)
       } else {
-        console.log(`[InputBox] Not Ollama provider or no model ID, setting ollamaVision to true`)
         setOllamaVision(true)
       }
     }
@@ -295,12 +291,8 @@ export default function InputBox() {
   const insertFiles = async (files: File[]) => {
     // Check if any of the files are images and if the current model supports vision
     const hasImages = files.some(file => file.type.startsWith('image/'))
-    console.log(`[insertFiles] Processing ${files.length} files, hasImages: ${hasImages}`)
-    console.log(`[insertFiles] Current provider: ${currentSession?.settings?.provider}, modelId: ${currentSession?.settings?.modelId}`)
-    console.log(`[insertFiles] ollamaVision state: ${ollamaVision}`)
     
     if (hasImages && currentSession?.settings?.provider === ModelProvider.Ollama && !ollamaVision) {
-      console.log(`[insertFiles] Blocking image insertion - Ollama model doesn't support vision`)
       toastActions.add(
         `${currentSession.settings.modelId} doesn't have vision abilities. Pick a model that lists clip in its families (e.g. llava:13b, llama3.2-vision) or remove the image.`,
       )
@@ -310,7 +302,6 @@ export default function InputBox() {
     for (const file of files) {
       // 文件和图片插入方法复用，会导致 svg、gif 这类不支持的图片也被插入，但暂时没看到有什么问题
       if (file.type.startsWith('image/')) {
-        console.log(`[insertFiles] Processing image file: ${file.name}`)
         const base64 = await picUtils.getImageBase64AndResize(file)
         const key = StorageKeyGenerator.picture('input-box')
         await storage.setBlob(key, base64)

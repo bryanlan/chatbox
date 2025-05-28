@@ -32,6 +32,8 @@ import { useProviders } from '@/hooks/useProviders'
 import ImageModelSelect from './ImageModelSelect'
 import { Box, Text, Tooltip } from '@mantine/core'
 import { clsx } from 'clsx'
+import { supportsVision } from '../../services/ollama'
+import * as toastActions from '@/stores/toastActions'
 
 export default function InputBox() {
   const theme = useTheme()
@@ -43,6 +45,7 @@ export default function InputBox() {
   const [messageInput, setMessageInput] = useState('')
   const [pictureKeys, setPictureKeys] = useState<string[]>([])
   const [attachments, setAttachments] = useState<File[]>([])
+  const [ollamaVision, setOllamaVision] = useState(true)
   const [webBrowsingMode, setWebBrowsingMode] = useAtom(atoms.inputBoxWebBrowsingModeAtom)
   const [links, setLinks] = useAtom(atoms.inputBoxLinksAtom)
   const pictureInputRef = useRef<HTMLInputElement | null>(null)
@@ -73,6 +76,20 @@ export default function InputBox() {
     }
     setWebBrowsingMode(false)
   }, [currentSessionId])
+
+  useEffect(() => {
+    const check = async () => {
+      if (currentSession?.settings?.provider === ModelProvider.Ollama && currentSession.settings?.modelId) {
+        const info = providers.find((p) => p.id === ModelProvider.Ollama)
+        const host = info?.apiHost || ''
+        const ok = await supportsVision(host, currentSession.settings.modelId!)
+        setOllamaVision(ok)
+      } else {
+        setOllamaVision(true)
+      }
+    }
+    check()
+  }, [currentSession?.settings?.provider, currentSession?.settings?.modelId, providers])
 
   const currentSession = useAtomValue(atoms.currentSessionAtom)
   const lastMessage = currentSession?.messages.length
@@ -106,6 +123,13 @@ export default function InputBox() {
         document.removeEventListener('click', clickEventListener)
       }
       document.addEventListener('click', clickEventListener)
+      return
+    }
+
+    if (pictureKeys.length > 0 && currentSession.settings.provider === ModelProvider.Ollama && !ollamaVision) {
+      toastActions.add(
+        `${currentSession.settings.modelId} doesn’t have vision abilities. Pick a model that lists clip in its families (e.g. llava:13b, llama3.2-vision) or remove the image.`,
+      )
       return
     }
 
@@ -262,6 +286,17 @@ export default function InputBox() {
   }
 
   const insertFiles = async (files: File[]) => {
+    if (currentSession?.settings?.provider === ModelProvider.Ollama && currentSession.settings?.modelId) {
+      const info = providers.find((p) => p.id === ModelProvider.Ollama)
+      const host = info?.apiHost || ''
+      const ok = await supportsVision(host, currentSession.settings.modelId)
+      if (!ok) {
+        toastActions.add(
+          `${currentSession.settings.modelId} doesn’t have vision abilities. Pick a model that lists clip in its families (e.g. llava:13b, llama3.2-vision) or remove the image.`,
+        )
+        return
+      }
+    }
     for (const file of files) {
       // 文件和图片插入方法复用，会导致 svg、gif 这类不支持的图片也被插入，但暂时没看到有什么问题
       if (file.type.startsWith('image/')) {
@@ -364,7 +399,7 @@ export default function InputBox() {
     const providerInfo = providers.find((p) => p.id === currentSession?.settings?.provider)
 
     const modelInfo = (providerInfo?.models || providerInfo?.defaultSettings?.models)?.find(
-      (m) => m.modelId === currentSession?.settings?.modelId
+      (m) => m.modelId === currentSession?.settings?.modelId,
     )
     return `${modelInfo?.nickname || currentSession?.settings?.modelId} (${
       providerInfo?.name || currentSession?.settings?.provider
@@ -389,7 +424,7 @@ export default function InputBox() {
     <MiniButton
       className={clsx(
         'w-8 ml-2 rounded-full flex items-center justify-center',
-        isSmallScreen ? 'absolute bottom-3 right-1' : ''
+        isSmallScreen ? 'absolute bottom-3 right-1' : '',
       )}
       style={{
         color: theme.palette.getContrastText(theme.palette.primary.main),
@@ -476,6 +511,7 @@ export default function InputBox() {
               className={cn('mr-1 sm:mr-2', currentSessionType !== 'picture' ? '' : 'hidden')}
               style={{ color: theme.palette.text.primary }}
               onClick={onImageUploadClick}
+              disabled={currentSession?.settings?.provider === ModelProvider.Ollama && !ollamaVision}
               tooltipTitle={
                 <div className="text-center inline-block">
                   <span>{t('Attach Image')}</span>
@@ -620,7 +656,7 @@ export default function InputBox() {
                 `w-full`,
                 'overflow-y resize-none border-none outline-none',
                 'bg-slate-300/25 rounded-lg p-2',
-                'sm:bg-transparent sm:p-1'
+                'sm:bg-transparent sm:p-1',
               )}
               value={messageInput}
               onChange={onMessageInput}
